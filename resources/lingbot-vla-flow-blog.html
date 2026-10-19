@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LingBot-VLA 2.0 训练数据流图 · 可拖拽（交互版）</title>
+<style>
+  :root{
+    --bg:#f6f5f2; --panel:#ffffff; --line:#d9d7d0; --line-soft:#e8e6e0;
+    --text:#26251f; --text-2:#6b6a63; --text-3:#9a988e;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px}
+
+  header{height:52px;display:flex;align-items:center;gap:14px;padding:0 16px;
+    background:var(--panel);border-bottom:1px solid var(--line);position:relative;z-index:20}
+  header h1{font-size:14px;font-weight:600;letter-spacing:.2px;white-space:nowrap}
+  header h1 span{color:var(--text-3);font-weight:400;margin-left:8px;font-size:12px}
+  .tools{display:flex;gap:6px;margin-left:auto;align-items:center}
+  button{font-family:var(--sans);font-size:12px;color:var(--text);background:#fff;
+    border:1px solid var(--line);border-radius:7px;padding:5px 11px;cursor:pointer;line-height:1.4}
+  button:hover{border-color:#b9b7ae;background:#faf9f6}
+  button.on{background:#26251f;color:#fff;border-color:#26251f}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;padding:6px 16px;background:var(--panel);
+    border-bottom:1px solid var(--line-soft);position:relative;z-index:19}
+  .chip{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-2);white-space:nowrap}
+  .chip i{width:9px;height:9px;border-radius:2px;display:block;flex:none}
+  .hint{font-size:11px;color:var(--text-3);padding:0 16px 6px;background:var(--panel)}
+
+  #stage{position:absolute;inset:52px 0 0 0;overflow:hidden;cursor:grab;touch-action:none}
+  #stage.panning{cursor:grabbing}
+  #world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+  #edges{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+  .casing{fill:none;stroke:#f6f5f2;stroke-width:5;stroke-linecap:round;opacity:1}
+  .edge{fill:none;stroke:#a9a7a0;stroke-width:1.6;opacity:.62}
+  .edge.dashed{stroke-dasharray:5 4}
+  .edge.hl{stroke:#26251f;stroke-width:2.6;opacity:1}
+  .edge.dim{opacity:.1}
+  .elabel{position:absolute;font-size:10.5px;color:var(--text-2);background:rgba(255,255,255,.92);
+    border:1px solid var(--line-soft);border-radius:5px;padding:1px 6px;white-space:nowrap;
+    transform:translate(-50%,-50%);pointer-events:none;font-family:var(--mono)}
+  .elabel.hide{display:none}
+
+  .node{position:absolute;width:232px;background:var(--panel);border:1px solid var(--line);
+    border-radius:11px;padding:9px 11px 10px;cursor:grab;user-select:none;
+    box-shadow:0 1px 2px rgba(38,37,31,.05);transition:box-shadow .12s,border-color .12s}
+  .node:hover{border-color:#b3b1a8;box-shadow:0 2px 8px rgba(38,37,31,.09)}
+  .node.dragging{cursor:grabbing;box-shadow:0 6px 18px rgba(38,37,31,.16);z-index:50}
+  .node.selected{border-color:#26251f;border-width:1.5px}
+  .node.dim{opacity:.35}
+  .node.frozen{border-style:dashed;border-width:1.5px}
+  .node.note{cursor:default;background:#fffdf5}
+  .nhead{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+  .nhead i{width:8px;height:8px;border-radius:2.5px;flex:none}
+  .ntitle{font-size:12.5px;font-weight:600;line-height:1.3}
+  .nsub{font-size:11px;color:var(--text-2);margin-bottom:5px;line-height:1.35}
+  .shapes{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 2px}
+  .shape{font-family:var(--mono);font-size:10.5px;background:#f1efe9;border:1px solid var(--line-soft);
+    border-radius:5px;padding:1.5px 6px;color:#4a4840;white-space:nowrap}
+  .shape.k{background:#eef2f7;border-color:#d5e0ec;color:#2c4a6b}
+  .shape.v{background:#eaf4ef;border-color:#cfe6da;color:#255a45}
+  .shape.d{background:#fbf1e2;border-color:#eed9b8;color:#7a5414}
+  .shape.l{background:#fdecec;border-color:#f2cfcf;color:#8a2b2b}
+  .shape.p{background:#fbeef3;border-color:#eed2de;color:#7d3355}
+  .shape.i{background:#f1efe9;border-color:#e0ded4;color:#5c5a50}
+  .shape.a{background:#eaf1fa;border-color:#d3e0f0;color:#26527f}
+  .note-txt{font-size:10.5px;color:var(--text-3);line-height:1.45;margin-top:4px}
+  .code-ref{font-family:var(--mono);font-size:10px;color:#8a8a80;margin-top:5px;
+    border-top:1px dashed var(--line-soft);padding-top:4px;word-break:break-all}
+
+  #panel{position:absolute;top:52px;right:0;bottom:0;width:308px;background:var(--panel);
+    border-left:1px solid var(--line);padding:16px;overflow-y:auto;z-index:30;
+    transform:translateX(100%);transition:transform .18s ease}
+  #panel.open{transform:translateX(0)}
+  #panel h2{font-size:14px;font-weight:600;margin-bottom:2px}
+  #panel .ptag{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:20px;margin:6px 0 10px}
+  #panel .psub{font-size:12px;color:var(--text-2);margin-bottom:10px}
+  #panel h3{font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;
+    letter-spacing:.6px;margin:14px 0 6px}
+  #panel .pbody{font-size:12.5px;line-height:1.65;color:var(--text)}
+  #panel .pshapes{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+  #panel .pconn{font-size:12px;line-height:1.7;color:var(--text-2)}
+  #panel .pconn b{color:var(--text);font-weight:500}
+  #panel .pcode{font-family:var(--mono);font-size:11px;background:#f6f5f2;border:1px solid var(--line-soft);
+    border-radius:7px;padding:7px 9px;color:#55534a;word-break:break-all;line-height:1.5}
+  #panel .close{position:absolute;top:12px;right:12px;border:none;background:none;font-size:16px;
+    color:var(--text-3);cursor:pointer;padding:2px 6px}
+  #panel .close:hover{color:var(--text)}
+
+  #formula{position:absolute;left:16px;bottom:14px;background:var(--panel);border:1px solid var(--line);
+    border-radius:11px;padding:10px 14px;z-index:25;max-width:min(560px,calc(100% - 340px));
+    box-shadow:0 2px 10px rgba(38,37,31,.07)}
+  #formula .ft{font-size:10.5px;font-weight:600;color:var(--text-3);letter-spacing:.6px;margin-bottom:5px}
+  #formula .fe{font-size:13px;line-height:1.9;font-family:var(--mono)}
+  #formula sub{font-size:9.5px}
+  #formula .w{color:#8a2b2b}
+  #zoomtag{position:absolute;right:16px;bottom:16px;font-family:var(--mono);font-size:11px;
+    color:var(--text-3);background:var(--panel);border:1px solid var(--line);border-radius:7px;
+    padding:3px 9px;z-index:25}
+  @media (max-width:760px){ #panel{width:100%} #formula{max-width:calc(100% - 32px)} }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>LingBot-VLA 2.0 训练数据流<span>节点可拖拽 · 点击看详情 · 张量形状已标注</span></h1>
+  <div class="tools">
+    <button id="btn-fit">适应屏幕</button>
+    <button id="btn-reset">重置布局</button>
+    <button id="btn-export">导出布局</button>
+    <button id="btn-import">导入布局</button>
+    <button id="btn-labels" class="on">边标签: 开</button>
+    <button id="btn-help">说明</button>
+    <input id="import-file" type="file" accept=".json,application/json" style="display:none">
+  </div>
+</header>
+<div class="legend" id="legend"></div>
+<div class="hint">操作:拖节点移动 · 拖空白处平移 · 滚轮缩放 · 单击节点查看输入输出与源码位置 · 虚线 = 参数/查询引用,实线 = 数据流</div>
+
+<div id="stage">
+  <div id="world">
+    <div id="nlayer"></div>
+    <div id="llayer"></div>
+    <svg id="edges"><defs>
+      <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse" markerUnits="strokeWidth">
+        <path d="M0.6 0.6 L9.4 5 L0.6 9.4 Z" fill="#8a8880"/>
+      </marker>
+      <marker id="arw-hl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="strokeWidth">
+        <path d="M0.6 0.6 L9.4 5 L0.6 9.4 Z" fill="#26251f"/>
+      </marker>
+    </defs><g id="elayer"></g></svg>
+  </div>
+</div>
+
+<aside id="panel"><button class="close" id="panel-close">×</button><div id="panel-body"></div></aside>
+
+<div id="formula">
+  <div class="ft">总训练损失(robotwin 后训练配置)</div>
+  <div class="fe">
+    L<sub>total</sub> = L<sub>action</sub>
+    + <span class="w">0.004</span>·L<sub>depth,cur</sub>
+    + <span class="w">0.004</span>·L<sub>depth,fut</sub>
+    + <span class="w">0.004</span>·(L<sub>video,cur</sub> + L<sub>video,fut</sub>)
+  </div>
+</div>
+<div id="zoomtag">100%</div>
+
+<script>
+/* ===================== 数据模型 ===================== */
+const BR = {
+  input : {c:'#5F5E5A', bg:'#F1EFE8', n:'输入数据'},
+  param : {c:'#993556', bg:'#FBEAF0', n:'可学习参数库 / query 加工'},
+  depth : {c:'#854F0B', bg:'#FAEEDA', n:'深度 teacher 分支'},
+  video : {c:'#0F6E56', bg:'#E1F5EE', n:'视频 teacher 分支'},
+  vlm   : {c:'#534AB7', bg:'#EEEDFE', n:'VLM / prefix tokens'},
+  action: {c:'#185FA5', bg:'#E6F1FB', n:'动作分支'},
+  loss  : {c:'#A32D2D', bg:'#FCEBEB', n:'损失'},
+  total : {c:'#501313', bg:'#F7C1C1', n:'总损失'},
+  note  : {c:'#8a8880', bg:'#FFFFFF', n:'说明'},
+};
+const SHAPE_CLASS = {input:'i', param:'p', depth:'d', video:'v', vlm:'v', action:'a', loss:'l', total:'l', note:'i'};
+
+const NODES = [
+/* ---------- 输入 ---------- */
+{id:'in_img', br:'input', x:-340, y:-89, t:'当前多视角 RGB', s:'I_t',
+ shapes:['[B, 3, H, W]  ← 3 是颜色通道','3 视角 = 3 张这样的图'],
+ note:'3 个视角各一张图:cam_high / cam_left_wrist / cam_right_wrist。比赛数据只有 RGB,没有深度图。',
+ detail:'⚠️ 别把 3 读成视角数。这是标准 NCHW 排布: B=批量、C=3 个颜色通道(R/G/B)、H/W=像素高宽。3 个视角是 3 张独立的图(实现上或作为独立的 view 维 [B, V, 3, H, W],或把 V 折进 batch),不进 C 这一维。模型唯一的“眼睛”。机器人没有深度传感器,所有几何信息都要从这张图里推断——这正是需要深度 teacher 的原因。'},
+{id:'in_text', br:'input', x:1471, y:-199, t:'语言指令', s:'text',
+ shapes:['[B, L]'],
+ note:'经 tokenizer 后作为 prefix token 进入 VLM。',
+ detail:'比赛评测分 clean2clean(seen 指令)与 clean2random(unseen 指令)。指令是任务语义的唯一来源,因此规则禁止按任务 ID 路由——那会让指令理解能力失去意义。'},
+{id:'in_state', br:'input', x:1714, y:793, t:'机器人状态', s:'s_t',
+ shapes:['[B, 14]'],
+ note:'Aloha-AgileX 双臂:每臂 6 关节 + 1 夹爪。',
+ detail:'归一化用 bounds_99_woclip(1%/99% 分位数 min-max),且必须只用 clean 数据统计——官方预置的 norm_stats 是 clean+randomized 混算的,不能直接用。'},
+{id:'in_future', br:'input', x:-334, y:-288, t:'未来 RGB', s:'I_future',
+ shapes:['[B, 3, H, W]  ← 同样, 3 = RGB'],
+ note:'训练集中的真实未来帧,只用于构造监督目标。3 同样是颜色通道。',
+ detail:'注意:未来图像走的是监督目标分支,不是把答案喂给学生。它经由 MoGe→LingBot-Depth 变成特征,与学生的预测做损失。'},
+{id:'in_action', br:'input', x:506, y:1648, t:'真实动作序列', s:'A',
+ shapes:['[B, 50, 14]'],
+ note:'chunk_size=50(代码默认);统一动作空间 55 维,Aloha 用其中 14 维。',
+ detail:'动作表示可用官方配置里的 subtract_state 开关切换绝对/增量(相对当前 state)。末端空间(EEF)在 55 维向量里预留了 14 维,但需要自己接 IK,工程量与风险都大。'},
+{id:'in_noise', br:'input', x:500, y:1841, t:'噪声 + 时间', s:'ε, τ',
+ shapes:['ε: [B, 50, 14]','τ: 标量'],
+ note:'flow matching 训练时每步重新随机采样;50 步 ≈ 1.7 秒(30FPS)。',
+ detail:'ε 是高斯噪声,τ ∈ [0,1] 是流时间。这两个量把“直接回归动作”变成“学一个速度场”。'},
+
+/* ---------- teacher 分支 ---------- */
+{id:'t_moge', br:'depth', frozen:true, x:316, y:-280, t:'MoGe-2-vitb-normal', s:'单目深度估计',
+ shapes:['输出 [B, H, W]'],
+ note:'frozen。从单张 RGB 推断深度图。它**不是**被蒸馏的老师——学生不向它对齐,它只是给 LingBot-Depth 供货的前置模型。',
+ detail:'单目深度在数学上是欠定的(同一张图可对应多种真实距离),MoGe 学的是仿射不变的 3D 点图结构,深度图是其副产品。104M 参数,约 60ms/张。整条 teacher 链路的质量上限由它决定——反光/细长物体上估错,错误会静默传导给 VLA。'},
+{id:'t_depth', br:'depth', frozen:true, x:313, y:-102, t:'LingBot-Depth', s:'frozen teacher',
+ shapes:['D_t: [B, 256, 1024]','D_future: [B, 256, 1024]'],
+ note:'输入 RGB + MoGe 深度,输出 256×1024 深度特征 token。',
+ detail:'用 masked depth modeling 自监督训练:遮住部分深度让模型重建,学会“传感器失效也能补全稠密深度”。注意它输出的是特征而非深度图——蒸馏对齐的是特征空间,不是距离数值。',
+ code:'module_utils.py:426 get_depth_target / models_rgbd_encoder.py DINOv2_RGBD_Encoder'},
+{id:'t_dinoseq', br:'video', x:313, y:84, t:'三帧输入(不是模型)', s:'喂给 DINO-Video 的数据',
+ shapes:['[3, 3, H, W]','时间偏移 [0, 0, 49 帧]'],
+ note:'前两帧逐像素相同,后一跳 = chunk_size−1 = 49 帧。不是等间隔采样。',
+ detail:'⚠️ 这不是模型,只是输入张量(DINO-Video 只有下面那一个)。代码原文 `frames = [current.clone(), current, *future_frames]`:warmup 是当前帧的**精确复制**,所以因果注意力下 Z_t 的运动信息为 0 —— 历史被主动消掉。目的是让目标成为 I_t 的确定性函数:学生只吃单帧、拿不到历史,若目标含历史依赖则在数学上无法拟合,该损失项会退化成不可约噪声。代价:Q_t 只剩静态图像特征,“同图不同史”没有梯度。第三帧才是真正的未来 —— 整块动作(chunk=50)执行完之后那一帧。effective_fps = 数据集fps / (chunk_size−1)。',
+ code:'base_dataset.py get_video_delta_timestamps / vision_models/module_utils.py get_video_target'},
+{id:'t_dino', br:'video', frozen:true, x:314, y:261, t:'DINO-VIDEO teacher', s:'303M · ViT-L 级 · frozen',
+ shapes:['V_t: [B, 256, 1024]','V_future: [B, 256, 1024]'],
+ note:'输出 = patch 级特征(256 token × 1024 维)。一次前向同时产出当前与未来两路;不是深度图、不是生成视频、不是类别标签。',
+ detail:'v2 新增(v1 只有深度蒸馏)。从 DINOv3 ViT-L 初始化,加块级因果时序注意力 + 3D-RoPE,在 500 万段视频上训练。参数量 303M —— 比 4B 的学生小 13 倍,所以它蒸馏的是“归纳偏置”(前瞻 + 因果时序结构),不是容量。⚠️ 注意分工:因为 warmup 是当前帧的复制,Z_t 那一路只剩静态特征,**真正携带动力学信号的只有 Z_t+T(前瞻)**;学生“预测未来”的能力来自这里,而“读懂过去运动”的能力没有来源。teacher 看得到 I_future,学生看不到、必须学会猜。只在训练期作为对齐目标,不进 K/V、不参与推理。LARYBench 上 4 项赢 3 项。',
+ code:'module_utils.py:350'},
+
+/* ---------- 参数库 ---------- */
+{id:'e_depth_cur', br:'param', x:299, y:563, t:'E_depth_cur', s:'可学习参数库',
+ shapes:['[256, 2560]'],
+ note:'深度(当前)分支的 query 参数。',
+ detail:'同一参数库有两种用途:① 加工后作为送进 VLM 的任务 token;② 直接扩展 batch 维,作为投影头的输出侧 queries R。'},
+{id:'e_video_cur', br:'param', x:292, y:755, t:'E_video_cur', s:'可学习参数库',
+ shapes:['[256, 2560]'], note:'视频(当前)分支的 query 参数。'},
+{id:'e_depth_fut', br:'param', x:287, y:934, t:'E_depth_future', s:'可学习参数库',
+ shapes:['[256, 2560]'], note:'深度(未来)分支的 query 参数。'},
+{id:'e_video_fut', br:'param', x:289, y:1129, t:'E_video_future', s:'可学习参数库',
+ shapes:['[256, 2560]'], note:'视频(未来)分支的 query 参数。'},
+
+/* ---------- 加工:query 路径 ---------- */
+{id:'g_depth_cur', br:'param', x:640, y:558, t:'分组取平均 P', s:'256 → 8 组',
+ shapes:['[8, 2560]'], note:'把 256 个 query 分 8 组求平均,得到 8 个任务 token。'},
+{id:'g_video_cur', br:'param', x:642, y:767, t:'分组取平均 P', s:'256 → 8 组',
+ shapes:['[8, 2560]'], note:'同上。'},
+{id:'g_depth_fut', br:'param', x:646, y:933, t:'分组取平均 P', s:'256 → 8 组',
+ shapes:['[8, 2560]'], note:'同上(未来分支)。'},
+{id:'g_video_fut', br:'param', x:634, y:1125, t:'分组取平均 P', s:'256 → 8 组',
+ shapes:['[8, 2560]'], note:'同上(未来分支)。'},
+{id:'cat_cur', br:'param', x:1026, y:611, t:'拼接', s:'depth ⊕ video',
+ shapes:['[8, 5120]'], note:'当前深度 8 个 + 当前视频 8 个,沿特征维拼接。',
+ detail:'对应配置 use_current_shared_task_proj: true。共享的是送进 VLM 的任务表示,不代表深度头和视频头共用参数。'},
+{id:'proj_cur', br:'param', x:1025, y:776, t:'current_shared_task_proj', s:'Linear(5120 → 2560)',
+ shapes:['q_cur: [8, 2560]'], note:'8 个当前任务 token,送入 VLM。'},
+{id:'cat_fut', br:'param', x:1043, y:907, t:'拼接', s:'depth ⊕ video',
+ shapes:['[8, 5120]'], note:'未来深度 + 未来视频拼接。',
+ detail:'对应 share_future_depth_query: true、use_shared_future_task_proj: true。'},
+{id:'proj_fut', br:'param', x:1044, y:1077, t:'future_shared_task_proj', s:'Linear(5120 → 2560)',
+ shapes:['q_fut: [8, 2560]'], note:'8 个未来任务 token,送入 VLM。'},
+
+/* ---------- 加工:动作路径 ---------- */
+{id:'state_proj', br:'action', x:1714, y:959, t:'state_proj', s:'状态投影',
+ shapes:['[B, 1, d_exp]'], note:'机器人状态投到动作专家的隐藏维度。'},
+{id:'mix_action', br:'action', x:1024, y:1851, t:'动作混合', s:'x_τ = τε + (1-τ)A',
+ shapes:['[B, 50, 14]'], note:'按时间 τ 在噪声与真实动作间线性插值,形状 [B, 50, 14]。',
+ detail:'x_τ 是流匹配的“当前位置”。τ=0 时就是干净动作 A,τ=1 时是纯噪声。训练时随机采样 τ,让模型学会整条路径的速度场。'},
+{id:'time_embed', br:'action', x:1023, y:1445, t:'时间编码', s:'τ → embedding',
+ shapes:['[B, 1, d_exp]'], note:'标量时间 τ 编码后作为后缀 token 的条件。'},
+
+/* ---------- 核心 ---------- */
+{id:'vlm', br:'vlm', x:1470, y:24, t:'联合 Transformer · VLM', s:'prefix tokens(输入侧)',
+ shapes:['图像 tokens: [B, N_img, 2560]','文本 tokens: [B, L, 2560]','q_cur / q_fut: [8, 2560]'],
+ note:'输入 = 图像 + 语言 + 任务 tokens;输出 = H_img / H_cur / H_fut(见右侧三个节点)。Qwen3-VL-4B 主干。',
+ detail:'输入是三种 token;输出是它们经过 VLM 后的隐藏状态 H_img / H_cur / H_fut,再送入四个投影头。观测 token 之间双向自注意力(同一时刻的完整快照,无时序要保护)。VLM 主干没有 MoE,全是密集层。',
+ code:'modeling_lingbot_vla_v2.py:768 联合计算入口'},
+{id:'mask_note', br:'note', x:1241, y:1211, t:'attention mask 可见关系', s:'blockwise causal',
+ note:'观测→观测 双向;动作→动作 因果;观测→动作 全封(切断 A₁→O→A₅₀ 间接泄露)。',
+ detail:'本质是 prefix-LM 的推广:观测当前缀(可全看),动作当后缀(按序写)。共享同一套 self-attention,用一张四象限掩码矩阵一次算完。此约束同时作用于 VLM 与 Action Expert。'},
+{id:'action_expert', br:'action', x:1713, y:1182, t:'Action Expert', s:'suffix tokens + MoE FFN',
+ shapes:['隐藏特征 [B, 16, d_exp]'],
+ note:'36 层,每层 FFN = 32 专家 top-4 MoE + 1 个共享专家。',
+ detail:'按 mask 读取 VLM/prefix 信息。MoE 路由打分强制 FP32(bf16 会翻转 top-k 选择导致专家轮换死亡)。负载均衡用 sequence-wise 辅助损失 1e-3 + z-loss 1e-4;loss-free 偏置更新在小 batch 下会随机游走,后训练配置里关闭。',
+ code:'qwen2_action_expert.py Qwen2TokenMoeBlock'},
+
+/* ---------- 输出:隐藏特征 ---------- */
+{id:'h_img', br:'vlm', x:1874, y:162, t:'H_img', s:'图像隐藏特征',
+ shapes:['[B, N_img, 2560]'], note:'VLM 输出中选取的图像片段。'},
+{id:'h_cur', br:'vlm', x:1872, y:-58, t:'H_cur', s:'当前任务隐藏特征',
+ shapes:['[B, 8, 2560]'], note:'q_cur 经过 VLM 后的输出。'},
+{id:'h_fut', br:'vlm', x:1873, y:379, t:'H_fut', s:'未来任务隐藏特征',
+ shapes:['[B, 8, 2560]'], note:'q_fut 经过 VLM 后的输出。'},
+{id:'act_out', br:'action', x:2274, y:850, t:'action_out_proj', s:'预测速度场',
+ shapes:['v̂_τ: [B, 50, 14]'], note:'动作专家输出经投影得到的速度。',
+ detail:'推理时从纯噪声 x₁ 出发,沿预测速度场做数值积分,τ 从 1 走到 0,得到动作 chunk。官方配置是 10 步去噪,约 130ms(RTX 4090D)。'},
+{id:'u_tau', br:'action', x:1026, y:1643, t:'目标速度', s:'u_τ = ε - A',
+ shapes:['[B, 50, 14]'], note:'flow matching 的训练目标(真值方向)。'},
+
+/* ---------- 投影头 ---------- */
+{id:'head_depth_cur', br:'depth', x:2254, y:-89, t:'当前深度头', s:'TaskTokenResampler',
+ shapes:['D̂_t: [B, 256, 1024]'],
+ note:'Q 来自 R(=E 扩展);K/V 来自 concat(H_img, H_cur)。',
+ detail:'1 个 Attention + FFN block。teacher 特征不进 K/V,只进损失计算。',
+ code:'modeling_lingbot_vla.py:1418 / resampler.py:163'},
+{id:'head_depth_fut', br:'depth', x:2264, y:159, t:'未来深度头', s:'TaskTokenResampler',
+ shapes:['D̂_future: [B, 256, 1024]'],
+ note:'上下文 = concat(H_img.detach(), H_fut)。',
+ detail:'detach 只切断图像特征这条路的梯度,不等于整个未来分支都不回传——任务 token 路径等仍按实际冻结设置传播。'},
+{id:'head_video_cur', br:'video', x:2279, y:403, t:'当前视频头', s:'TaskTokenResampler',
+ shapes:['V̂_t: [B, 256, 1024]'],
+ note:'上下文 = concat(H_img, H_cur)。',
+ detail:'当前实现直接用 H_img(未 detach)。不要把单个 detach 开关理解成所有分支统一 detach。',
+ code:'modeling_lingbot_vla.py:1450 / module_utils.py:350'},
+{id:'head_video_fut', br:'video', x:2274, y:636, t:'未来视频头', s:'TaskTokenResampler',
+ shapes:['V̂_future: [B, 256, 1024]'],
+ note:'上下文 = concat(H_img.detach(), H_fut)。',
+ code:'modeling_lingbot_vla.py:1509'},
+
+/* ---------- 损失 ---------- */
+{id:'loss_depth_cur', br:'loss', x:2677, y:161, t:'当前深度损失', s:'Smooth L1',
+ shapes:['权重 0.004'], note:'D̂_t vs teacher 的 D_t。'},
+{id:'loss_depth_fut', br:'loss', x:2675, y:348, t:'未来深度损失', s:'Smooth L1',
+ shapes:['权重 0.004'], note:'D̂_future vs D_future。'},
+{id:'loss_video_cur', br:'loss', x:2685, y:518, t:'当前视频损失', s:'MSE + 0.2·cosine',
+ shapes:['权重 0.004'], note:'V̂_t vs teacher 的 V_t。'},
+{id:'loss_video_fut', br:'loss', x:2677, y:680, t:'未来视频损失', s:'MSE + 0.2·cosine',
+ shapes:['权重 0.004'], note:'V̂_future vs V_future。'},
+{id:'loss_action', br:'loss', x:2677, y:844, t:'动作损失', s:'Flow Matching',
+ shapes:['权重 1.0'], note:'v̂_τ vs u_τ,速度匹配损失(MSE 或 L1)。',
+ detail:'唯一的主任务损失。四个辅助损失权重各 0.004,合计仅占 1.6%——它们是“细雨”,防止小数据下视觉表征学歪,不抢主任务。'},
+{id:'loss_total', br:'total', x:3118, y:492, t:'总损失 L_total', s:'加权求和',
+ shapes:['1 主 + 4 辅助'],
+ note:'反传只到允许训练的学生参数;teacher 全部 frozen,不参与梯度。',
+ detail:'teacher 权重(MoGe / LingBot-Depth / DINO-Video)推理与提交时完全不出现,所以不影响“单一权重”规则;但 README 仍需如实披露来源。'},
+];
+
+const EDGES = [
+  ['in_img','t_moge','RGB'],
+  ['in_future','t_moge','RGB(未来)'],
+  ['t_moge','t_depth','深度图'],
+  ['in_img','t_depth','RGB'],
+  ['in_future','t_depth','未来 RGB'],
+  ['t_depth','loss_depth_cur','D_t'],
+  ['t_depth','loss_depth_fut','D_future'],
+  ['in_img','t_dinoseq','复制为 warmup'],
+  ['in_future','t_dinoseq','I_future'],
+  ['t_dinoseq','t_dino','3 帧序列'],
+  ['t_dino','loss_video_cur','V_t'],
+  ['t_dino','loss_video_fut','V_future'],
+  ['e_depth_cur','g_depth_cur',''],
+  ['e_video_cur','g_video_cur',''],
+  ['e_depth_fut','g_depth_fut',''],
+  ['e_video_fut','g_video_fut',''],
+  ['g_depth_cur','cat_cur',''],
+  ['g_video_cur','cat_cur',''],
+  ['cat_cur','proj_cur',''],
+  ['g_depth_fut','cat_fut',''],
+  ['g_video_fut','cat_fut',''],
+  ['cat_fut','proj_fut',''],
+  ['in_state','state_proj','s_t'],
+  ['in_action','mix_action','A'],
+  ['in_noise','mix_action','ε, τ'],
+  ['in_noise','time_embed','τ'],
+  ['in_noise','u_tau','ε'],
+  ['in_action','u_tau','A'],
+  ['state_proj','action_expert',''],
+  ['mix_action','action_expert','x_τ'],
+  ['time_embed','action_expert','τ 嵌入'],
+  ['in_img','vlm','视觉塔编码'],
+  ['in_text','vlm','文本嵌入'],
+  ['proj_cur','vlm','q_cur'],
+  ['proj_fut','vlm','q_fut'],
+  ['vlm','h_img',''],
+  ['vlm','h_cur',''],
+  ['vlm','h_fut',''],
+  ['vlm','action_expert','按 mask 读取',true],
+  ['mask_note','action_expert','约束',true],
+  ['action_expert','act_out',''],
+  ['act_out','loss_action','v̂_τ'],
+  ['u_tau','loss_action','u_τ'],
+  ['h_img','head_depth_cur','上下文'],
+  ['h_cur','head_depth_cur','上下文'],
+  ['h_img','head_depth_fut','上下文'],
+  ['h_fut','head_depth_fut','上下文'],
+  ['h_img','head_video_cur','上下文'],
+  ['h_cur','head_video_cur','上下文'],
+  ['h_img','head_video_fut','上下文'],
+  ['h_fut','head_video_fut','上下文'],
+  ['e_depth_cur','head_depth_cur','R 输出侧 queries',true],
+  ['e_video_cur','head_video_cur','R 输出侧 queries',true],
+  ['e_depth_fut','head_depth_fut','R 输出侧 queries',true],
+  ['e_video_fut','head_video_fut','R 输出侧 queries',true],
+  ['head_depth_cur','loss_depth_cur','D̂_t'],
+  ['head_depth_fut','loss_depth_fut','D̂_future'],
+  ['head_video_cur','loss_video_cur','V̂_t'],
+  ['head_video_fut','loss_video_fut','V̂_future'],
+  ['loss_depth_cur','loss_total',''],
+  ['loss_depth_fut','loss_total',''],
+  ['loss_video_cur','loss_total',''],
+  ['loss_video_fut','loss_total',''],
+  ['loss_action','loss_total',''],
+];
+
+/* ===================== 渲染 ===================== */
+const stage = document.getElementById('stage');
+const world = document.getElementById('world');
+const nlayer = document.getElementById('nlayer');
+const llayer = document.getElementById('llayer');
+const elayer = document.getElementById('elayer');
+const svg = document.getElementById('edges');
+const panel = document.getElementById('panel');
+const panelBody = document.getElementById('panel-body');
+const zoomtag = document.getElementById('zoomtag');
+
+const nodeById = {};
+const edgeEls = [];
+let selected = null;
+const LS_KEY = 'lingbot-vla-flow-v1';
+
+/* 图例 */
+(function(){
+  const lg = document.getElementById('legend');
+  Object.entries(BR).forEach(([k,v])=>{
+    if(k==='note') return;
+    const d = document.createElement('span');
+    d.className = 'chip';
+    d.innerHTML = `<i style="background:${v.c}"></i>${v.n}`;
+    lg.appendChild(d);
+  });
+  const extra = document.createElement('span');
+  extra.className = 'chip';
+  extra.innerHTML = `<i style="background:#fff;border:1.5px dashed #8a8880"></i>虚线框 = frozen(不训练)`;
+  lg.appendChild(extra);
+})();
+
+function shapeClass(n){ return SHAPE_CLASS[n.br] || 'i'; }
+
+function buildNodes(){
+  NODES.forEach(n=>{
+    n.w = 232;
+    const el = document.createElement('div');
+    el.className = 'node' + (n.frozen ? ' frozen' : '') + (n.br==='note' ? ' note' : '');
+    el.style.left = n.x + 'px';
+    el.style.top = n.y + 'px';
+    el.dataset.id = n.id;
+    const br = BR[n.br];
+    const shapes = (n.shapes||[]).map(s=>`<span class="shape ${shapeClass(n)}">${s}</span>`).join('');
+    el.innerHTML =
+      `<div class="nhead"><i style="background:${br.c}"></i><span class="ntitle">${n.t}</span></div>` +
+      (n.s ? `<div class="nsub">${n.s}</div>` : '') +
+      (shapes ? `<div class="shapes">${shapes}</div>` : '') +
+      (n.note ? `<div class="note-txt">${n.note}</div>` : '');
+    nlayer.appendChild(el);
+    n.el = el;
+    nodeById[n.id] = n;
+    el.addEventListener('pointerdown', e=>onNodeDown(e, n));
+    el.addEventListener('pointerenter', ()=>highlight(n.id, true));
+    el.addEventListener('pointerleave', ()=>highlight(n.id, false));
+  });
+  NODES.forEach(n=>{ n.h = n.el.offsetHeight; });
+}
+
+function anchor(n, side){
+  if(side==='r') return {x:n.x+n.w, y:n.y+n.h/2};
+  if(side==='l') return {x:n.x,     y:n.y+n.h/2};
+  if(side==='t') return {x:n.x+n.w/2, y:n.y};
+  return {x:n.x+n.w/2, y:n.y+n.h};
+}
+function pickSides(a,b){
+  const ac = {x:a.x+a.w/2, y:a.y+a.h/2}, bc = {x:b.x+b.w/2, y:b.y+b.h/2};
+  const dx = bc.x-ac.x, dy = bc.y-ac.y;
+  if(Math.abs(dx) >= Math.abs(dy)) return dx>0 ? ['r','l'] : ['l','r'];
+  return dy>0 ? ['b','t'] : ['t','b'];
+}
+function pathD(p1,p2,horiz){
+  if(horiz){
+    const k = Math.max(40, Math.min(150, Math.abs(p2.x-p1.x)*0.5));
+    return `M ${p1.x} ${p1.y} C ${p1.x+k} ${p1.y}, ${p2.x-k} ${p2.y}, ${p2.x} ${p2.y}`;
+  }
+  const k = Math.max(30, Math.min(110, Math.abs(p2.y-p1.y)*0.5));
+  return `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y+k}, ${p2.x} ${p2.y-k}, ${p2.x} ${p2.y}`;
+}
+function bezMid(p1,p2,horiz){
+  let c1,c2;
+  if(horiz){
+    const k = Math.max(40, Math.min(150, Math.abs(p2.x-p1.x)*0.5));
+    c1 = {x:p1.x+k, y:p1.y}; c2 = {x:p2.x-k, y:p2.y};
+  }else{
+    const k = Math.max(30, Math.min(110, Math.abs(p2.y-p1.y)*0.5));
+    c1 = {x:p1.x, y:p1.y+k}; c2 = {x:p2.x, y:p2.y-k};
+  }
+  return {x:(p1.x+3*c1.x+3*c2.x+p2.x)/8, y:(p1.y+3*c1.y+3*c2.y+p2.y)/8};
+}
+
+/* 指定连边的出入侧:让长边走列间空白通道,避免横穿其它节点卡片 */
+const SIDE_OVERRIDE = {
+  'proj_cur>vlm': 'rl',
+  'proj_fut>vlm': 'rl',
+};
+function sidesFor(a,b){
+  const ov = SIDE_OVERRIDE[a.id+'>'+b.id];
+  if(ov) return [ov[0], ov[1]];
+  return pickSides(a,b);
+}
+
+function buildEdges(){
+  svg.setAttribute('width', 2600);
+  svg.setAttribute('height', 1300);
+  EDGES.forEach(([from,to,label,dashed])=>{
+    const a = nodeById[from], b = nodeById[to];
+    const casing = document.createElementNS('http://www.w3.org/2000/svg','path');
+    casing.setAttribute('class','casing');
+    elayer.appendChild(casing);
+    const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('class','edge' + (dashed?' dashed':''));
+    p.setAttribute('marker-end','url(#arw)');
+    elayer.appendChild(p);
+    const lb = document.createElement('div');
+    lb.className = 'elabel';
+    lb.textContent = label;
+    if(!label) lb.style.display = 'none';
+    llayer.appendChild(lb);
+    edgeEls.push({a,b,p,casing,lb});
+  });
+  redrawEdges();
+}
+function redrawEdges(){
+  edgeEls.forEach(e=>{
+    const [sa,sb] = sidesFor(e.a,e.b);
+    const p1 = anchor(e.a,sa), p2 = anchor(e.b,sb);
+    const horiz = (sa==='r'||sa==='l');
+    const d = pathD(p1,p2,horiz);
+    e.p.setAttribute('d', d);
+    e.casing.setAttribute('d', d);
+    const m = bezMid(p1,p2,horiz);
+    if(horiz){ e.lb.style.left = m.x+'px'; e.lb.style.top = (m.y-16)+'px'; }
+    else     { e.lb.style.left = (m.x-18)+'px'; e.lb.style.top = m.y+'px'; }
+  });
+}
+function redrawNode(n){
+  n.el.style.left = n.x+'px';
+  n.el.style.top  = n.y+'px';
+  redrawEdges();
+}
+
+/* ===================== 交互 ===================== */
+/* 默认视野: 取自 2026-10-16 从浏览器本地存储恢复出的实际画面 */
+const DEFAULT_VIEW = {x:-106.8175, y:335.2842, k:0.6857};
+let view = {x:0, y:0, k:1};
+function applyView(){
+  world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+  zoomtag.textContent = Math.round(view.k*100)+'%';
+  saveState();
+}
+function clampK(k){ return Math.max(0.2, Math.min(2.4, k)); }
+
+function onNodeDown(e, n){
+  if(e.button!==0) return;
+  e.stopPropagation();
+  n.el.setPointerCapture(e.pointerId);
+  const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y;
+  let moved = 0;
+  n.el.classList.add('dragging');
+  const mv = ev=>{
+    const dx = (ev.clientX-sx)/view.k, dy = (ev.clientY-sy)/view.k;
+    moved = Math.max(moved, Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy));
+    n.x = ox+dx; n.y = oy+dy;
+    redrawNode(n);
+  };
+  const up = ()=>{
+    n.el.classList.remove('dragging');
+    n.el.releasePointerCapture(e.pointerId);
+    n.el.removeEventListener('pointermove', mv);
+    n.el.removeEventListener('pointerup', up);
+    if(moved < 5) selectNode(n);
+    saveState();
+  };
+  n.el.addEventListener('pointermove', mv);
+  n.el.addEventListener('pointerup', up);
+}
+
+stage.addEventListener('pointerdown', e=>{
+  if(e.target.closest('.node')) return;
+  closePanel();
+  stage.classList.add('panning');
+  const sx = e.clientX, sy = e.clientY, ox = view.x, oy = view.y;
+  const mv = ev=>{ view.x = ox + (ev.clientX-sx); view.y = oy + (ev.clientY-sy); applyView(); };
+  const up = ()=>{
+    stage.classList.remove('panning');
+    window.removeEventListener('pointermove', mv);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', up);
+});
+
+stage.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const r = stage.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const k2 = clampK(view.k * (e.deltaY<0 ? 1.12 : 0.89));
+  view.x = mx - (mx - view.x) * k2/view.k;
+  view.y = my - (my - view.y) * k2/view.k;
+  view.k = k2;
+  applyView();
+}, {passive:false});
+
+function highlight(id, on){
+  edgeEls.forEach(e=>{
+    const touch = (e.a.id===id || e.b.id===id);
+    if(on){
+      if(touch){ e.p.classList.add('hl'); e.p.classList.remove('dim'); e.p.setAttribute('marker-end','url(#arw-hl)'); }
+      else e.p.classList.add('dim');
+      if(touch && e.lb.textContent) e.lb.style.opacity = 1;
+    }else{
+      e.p.classList.remove('hl','dim');
+      e.p.setAttribute('marker-end','url(#arw)');
+      e.lb.style.opacity = '';
+    }
+  });
+  NODES.forEach(n=>{
+    if(!on) { n.el.classList.remove('dim'); return; }
+    const touch = edgeEls.some(e=>(e.a.id===id||e.b.id===id) && (e.a.id===n.id||e.b.id===n.id));
+    n.el.classList.toggle('dim', !touch && n.id!==id);
+  });
+}
+
+function selectNode(n){
+  NODES.forEach(m=>m.el.classList.remove('selected'));
+  n.el.classList.add('selected');
+  selected = n;
+  const br = BR[n.br];
+  const ins = [], outs = [];
+  EDGES.forEach(([f,t,l])=>{ if(t===n.id) ins.push(nodeById[f].t); if(f===n.id) outs.push(nodeById[t].t); });
+  panelBody.innerHTML =
+    `<h2>${n.t}</h2>` +
+    (n.s?`<div class="psub">${n.s}</div>`:'') +
+    `<span class="ptag" style="background:${br.bg};color:${br.c}">${br.n}${n.frozen?' · frozen':''}</span>` +
+    (n.shapes?`<h3>张量形状</h3><div class="pshapes">${n.shapes.map(s=>`<span class="shape ${shapeClass(n)}">${s}</span>`).join('')}</div>`:'') +
+    (n.detail?`<h3>说明</h3><div class="pbody">${n.detail}</div>`:'') +
+    (n.note?`<h3>要点</h3><div class="pbody">${n.note}</div>`:'') +
+    (ins.length?`<h3>输入来自</h3><div class="pconn">${ins.map(x=>`<b>·</b> ${x}`).join('<br>')}</div>`:'') +
+    (outs.length?`<h3>输出到</h3><div class="pconn">${outs.map(x=>`<b>·</b> ${x}`).join('<br>')}</div>`:'') +
+    (n.code?`<h3>源码位置</h3><div class="pcode">${n.code}</div>`:'');
+  panel.classList.add('open');
+}
+function closePanel(){ panel.classList.remove('open'); NODES.forEach(m=>m.el.classList.remove('selected')); selected=null; }
+document.getElementById('panel-close').addEventListener('click', closePanel);
+
+/* 工具按钮 */
+function fit(){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  NODES.forEach(n=>{ x0=Math.min(x0,n.x); y0=Math.min(y0,n.y); x1=Math.max(x1,n.x+n.w); y1=Math.max(y1,n.y+n.h); });
+  const pad = 48;
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  const k = clampK(Math.min((sw-pad*2)/(x1-x0), (sh-pad*2)/(y1-y0)));
+  view.k = k;
+  view.x = (sw - (x1-x0)*k)/2 - x0*k;
+  view.y = (sh - (y1-y0)*k)/2 - y0*k;
+  applyView();
+}
+document.getElementById('btn-fit').addEventListener('click', fit);
+document.getElementById('btn-reset').addEventListener('click', ()=>{
+  localStorage.removeItem(LS_KEY);
+  NODES.forEach(n=>{ n.x=n.px; n.y=n.py; });
+  NODES.forEach(n=>{ n.x=n.px; n.y=n.py; redrawNode(n); });
+  fit();
+});
+let showLabels = true;
+const btnLabels = document.getElementById('btn-labels');
+btnLabels.addEventListener('click', ()=>{
+  showLabels = !showLabels;
+  btnLabels.classList.toggle('on', showLabels);
+  btnLabels.textContent = showLabels ? '边标签: 开' : '边标签: 关';
+  edgeEls.forEach(ed=>{ ed.lb.classList.toggle('hide', !showLabels); });
+});
+document.getElementById('btn-help').addEventListener('click', ()=>{
+  panelBody.innerHTML =
+    `<h2>使用说明</h2>
+     <div class="pbody" style="line-height:2">
+     <b>拖动节点</b>:按住节点拖动,自动重排连线。<br>
+     <b>平移画布</b>:在空白处按住拖动。<br>
+     <b>缩放</b>:滚轮(以鼠标位置为中心)。<br>
+     <b>查看详情</b>:单击任意节点,右侧显示张量形状、输入输出连接与源码位置。<br>
+     <b>高亮链路</b>:鼠标悬停节点,相关连边加粗、其余淡出。<br>
+     <b>重置布局</b>:恢复初始排版并清除本地记录。<br><br>
+     <b>导出布局</b>:把当前节点坐标+视野下载成 <code>lingbot-vla-flow-layout.json</code>。<br>
+     <b>导入布局</b>:选择之前导出的 JSON,一键还原(换端口、换电脑、换浏览器都有效)。<br><br>
+     <b>实线</b> = 数据流;<b>虚线</b> = 参数/查询引用(如 E 参数库作为投影头输出侧 queries R)。<br>
+     <b>虚线框</b> = frozen 权重(不参与训练、不参与提交)。<br><br>
+     <b>持久化说明</b>:拖动结果自动存在浏览器 localStorage(键 <code>lingbot-vla-flow-v1</code>),关机重启不丢;<br>
+     但它按「网页来源」隔离 —— 若下次是<b>不同端口的内置预览</b>打开,读不到旧记录,会回到初始排版。<br>
+     想彻底不受端口影响,就用<b>导出布局</b>存一份 JSON。
+     </div>`;
+  panel.classList.add('open');
+});
+
+/* 导出 / 导入布局: 不依赖浏览器本地记录, 换端口/换电脑也能恢复 */
+function exportLayout(){
+  const pos = {};
+  NODES.forEach(n=>{ pos[n.id] = [Math.round(n.x), Math.round(n.y)]; });
+  const data = { key: LS_KEY, savedAt: new Date().toISOString(), pos, view };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'lingbot-vla-flow-layout.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function applyLayout(st){
+  if(st.pos) NODES.forEach(n=>{ if(st.pos[n.id]){ n.px = n.x; n.py = n.y; n.x = st.pos[n.id][0]; n.y = st.pos[n.id][1]; } });
+  if(st.view) view = st.view;
+  NODES.forEach(redrawNode);
+  applyView();
+  saveState();
+}
+function importLayout(file){
+  const fr = new FileReader();
+  fr.onload = ()=>{
+    try{
+      const st = JSON.parse(fr.result);
+      if(!st.pos) throw new Error('缺少 pos 字段');
+      applyLayout(st);
+      alert('布局已导入并保存到本地浏览器。');
+    }catch(err){ alert('导入失败:' + err.message); }
+  };
+  fr.readAsText(file);
+}
+document.getElementById('btn-export').addEventListener('click', exportLayout);
+const importInput = document.getElementById('import-file');
+document.getElementById('btn-import').addEventListener('click', ()=> importInput.click());
+importInput.addEventListener('change', ()=>{ if(importInput.files[0]) importLayout(importInput.files[0]); importInput.value=''; });
+
+/* 持久化 */
+function saveState(){
+  try{
+    const pos = {};
+    NODES.forEach(n=>{ pos[n.id] = [Math.round(n.x), Math.round(n.y)]; });
+    localStorage.setItem(LS_KEY, JSON.stringify({pos, view}));
+  }catch(e){}
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return false;
+    const st = JSON.parse(raw);
+    if(st.pos) NODES.forEach(n=>{ if(st.pos[n.id]){ n.px = n.x; n.py = n.y; n.x = st.pos[n.id][0]; n.y = st.pos[n.id][1]; } });
+    if(st.view) view = st.view;
+    return true;
+  }catch(e){ return false; }
+}
+
+/* 启动 */
+NODES.forEach(n=>{ n.px = n.x; n.py = n.y; });
+buildNodes();
+buildEdges();
+const restored = false; /* 发布版：固定展示作者布局 */
+NODES.forEach(redrawNode);
+if(!restored) view = Object.assign({}, DEFAULT_VIEW);
+applyView();
+window.addEventListener('resize', ()=>{ /* 保持视图,仅防溢出 */ });
+</script>
+</body>
+</html>
